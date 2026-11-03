@@ -39,6 +39,18 @@ int main() {
     // load vertex and fragment shaders:
     sf::Shader shader(std::filesystem::path{"main.vert"}, std::filesystem::path{"main.frag"});
     // ... other shaders can go here...
+    sf::Shader copyShader(std::filesystem::path{"main.vert"}, std::filesystem::path{"copy.frag"});
+
+    // Two render textures for previous and current frames
+    sf::RenderTexture bufferA(window.getSize());
+    sf::RenderTexture bufferB(window.getSize());
+
+    bufferA.setSmooth(true);
+    bufferB.setSmooth(true);
+
+    sf::RenderTexture* previousFrame = &bufferA;
+    sf::RenderTexture* currentFrame = &bufferB;
+
 
     sf::Font openSansFont(EmbeddedFonts::OpenSans_SemiBold_ttf,
                           EmbeddedFonts::OpenSans_SemiBold_ttf_len);
@@ -56,6 +68,10 @@ int main() {
     float worldUnitsPerPixel = 1.f / window.getSize().y;
     sf::Vector2f camCenterWorld{0.f, 0.f};
     int maxIters = INIT_ITERS;
+    sf::Vector2f oldCamCenterWorld = camCenterWorld;
+    float oldWorldUnitsPerPixel = worldUnitsPerPixel;
+    sf::Vector2f oldC = c;
+    bool hasOldFrame = false;
 
     int i = -1;
     while (window.isOpen()) {
@@ -114,10 +130,38 @@ int main() {
             maxIters = std::min(maxIters * 2, TRUE_MAX_ITERS);
         }
         // TODO set shader uniforms here...
+        // Task 1: Julia set uniforms
+        shader.setUniform("c", sf::Glsl::Vec2(c));
+        shader.setUniform("MAX_ITERS", maxIters);
+        shader.setUniform("windowSizePixels", sf::Glsl::Vec2(window.getSize()));
+        shader.setUniform("camCenterWorld", sf::Glsl::Vec2(camCenterWorld));
+        shader.setUniform("camWorldUnitsPerPixel", worldUnitsPerPixel);
+
+        // Task 3: previous frame uniforms
+        shader.setUniform("oldCamCenterWorld", sf::Glsl::Vec2(oldCamCenterWorld));
+        shader.setUniform("oldCamWorldUnitsPerPixel", oldWorldUnitsPerPixel);
+        shader.setUniform("oldFrame", previousFrame->getTexture());
+        shader.setUniform("hasOldFrame", hasOldFrame ? 1 : 0);
+        shader.setUniform("TRUE_MAX_ITERS", TRUE_MAX_ITERS);
+
+        bool changed = c.x != oldC.x || c.y != oldC.y;
+        shader.setUniform("cChanged", changed ? 1 : 0);
 
         window.clear(sf::Color::Black);
         // TODO something.draw(fullscreenTriangle, &shader);
         // this might change as you finish more parts!
+        // Render Julia set into the current frame buffer
+        currentFrame->clear(sf::Color::Black);
+        currentFrame->draw(fullscreenTriangle, &shader);
+        currentFrame->display();
+
+        // Copy the current frame to the window
+        copyShader.setUniform("toCopy", currentFrame->getTexture());
+
+        window.clear(sf::Color::Black);
+        window.draw(fullscreenTriangle, &copyShader);
+
+        // Draw the parameter text
         cText.setString("c = (" + std::to_string(c.x) + ", " + std::to_string(c.y) + ")");
         cTextShadow.setString("c = (" + std::to_string(c.x) + ", " + std::to_string(c.y) + ")");
         window.draw(cTextShadow);
@@ -125,6 +169,16 @@ int main() {
         window.display();
 
         // TODO (reprojection)... update "old" states
+        // Save camera and Julia set state for the next frame
+        oldCamCenterWorld = camCenterWorld;
+        oldWorldUnitsPerPixel = worldUnitsPerPixel;
+        oldC = c;
+        hasOldFrame = true;
+
+        // Swap previous and current buffers
+        sf::RenderTexture* temp = previousFrame;
+        previousFrame = currentFrame;
+        currentFrame = temp;
     }
     return 0;
 }
